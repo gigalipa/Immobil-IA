@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Immobil-IA controlled source</title>
+    <style>
+      body {
+        background: #f8fafc;
+        color: #0f172a;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 32px;
+      }
+
+      main {
+        display: grid;
+        gap: 24px;
+        margin: 0 auto;
+        max-width: 980px;
+      }
+
+      section {
+        display: grid;
+        gap: 12px;
+      }
+
+      article {
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        display: grid;
+        gap: 8px;
+        padding: 16px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      .meta {
+        color: #475569;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main data-source="immobil-ia-controlled-source">
+      <header>
+        <h1>Fuente controlada Chapinero</h1>
+        <p class="meta">Fixture local para probar scraping real sin portales externos.</p>
+      </header>
+
+      <section aria-label="Publicaciones">
+        <h2>Publicaciones</h2>
+
+        <article
+          class="listing-card"
+          data-id="fixture-property-101"
+          data-price="420000000"
+          data-area-m2="72"
+          data-rooms="2"
+          data-location="Bogota - Chapinero"
+          data-lat="4.649"
+          data-lng="-74.063"
+          data-url="https://fixture.immobil-ia.local/publicaciones/fixture-property-101"
+        >
+          <h3 data-field="title">Apartamento exterior 2 habitaciones cerca a zona financiera</h3>
+          <p data-field="raw-text">
+            Agencia publica apartamento exterior en Chapinero Alto. Precio 420 millones, 72 m2,
+            2 habitaciones, contacto Carlos Marin, telefono +573104455667.
+          </p>
+          <p data-field="owner-name">Carlos Marin</p>
+          <p data-field="owner-phone">+573104455667</p>
+          <p data-field="owner-email">carlos.marin@example.com</p>
+          <img
+            alt="Apartamento exterior"
+            src="https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=900&q=80"
+          />
+        </article>
+
+        <article
+          class="listing-card"
+          data-id="fixture-property-102"
+          data-price="418000000"
+          data-area-m2="71"
+          data-rooms="2"
+          data-location="Bogota - Chapinero"
+          data-lat="4.650"
+          data-lng="-74.061"
+          data-url="https://fixture.immobil-ia.local/publicaciones/fixture-property-102"
+        >
+          <h3 data-field="title">Apartamento publicado por agencia aliada</h3>
+          <p data-field="raw-text">
+            Apartamento muy similar al anterior, exterior, 71 m2, 2 alcobas, cerca a zona financiera.
+            Posible mismo propietario: Carlos Marin.
+          </p>
+          <p data-field="owner-name">Carlos Marin</p>
+          <p data-field="owner-phone">+573104455667</p>
+          <p data-field="owner-email">carlos.marin@example.com</p>
+          <img
+            alt="Apartamento similar"
+            src="https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=80"
+          />
+        </article>
+
+        <article
+          class="listing-card"
+          data-id="fixture-property-103"
+          data-price="360000000"
+          data-area-m2="55"
+          data-rooms="1"
+          data-location="Bogota - Usaquen"
+          data-lat="4.704"
+          data-lng="-74.032"
+          data-url="https://fixture.immobil-ia.local/publicaciones/fixture-property-103"
+        >
+          <h3 data-field="title">Loft cerca a parque con cocina abierta</h3>
+          <p data-field="raw-text">
+            Loft de 55 m2 en Usaquen, una habitacion, balcon y cocina abierta. Venta directa.
+          </p>
+          <p data-field="owner-name">Laura Cardenas</p>
+          <p data-field="owner-phone">+573156661212</p>
+          <p data-field="owner-email">laura.cardenas@example.com</p>
+          <img
+            alt="Loft Usaquen"
+            src="https://images.unsplash.com/photo-1493809842364-78817add7ffb?auto=format&fit=crop&w=900&q=80"
+          />
+        </article>
+
+        <article
+          class="listing-card"
+          data-id="fixture-property-104"
+          data-price="2800000"
+          data-area-m2="64"
+          data-rooms="2"
+          data-location="Bogota - Chapinero"
+          data-lat="4.648"
+          data-lng="-74.064"
+          data-url="https://fixture.immobil-ia.local/publicaciones/fixture-property-104"
+        >
+          <h3 data-field="title">Apartamento en arriendo 2 habitaciones Chapinero Alto</h3>
+          <p data-field="raw-text">
+            Arriendo apartamento exterior en Chapinero Alto, 64 m2, 2 habitaciones, estudio pequeno
+            y parqueadero. Canon 2.8 millones. Contacto Sandra Rios, telefono +573013334455.
+          </p>
+          <p data-field="owner-name">Sandra Rios</p>
+          <p data-field="owner-phone">+573013334455</p>
+          <p data-field="owner-email">sandra.rios@example.com</p>
+          <img
+            alt="Apartamento arriendo Chapinero"
+            src="https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=900&q=80"
+          />
+        </article>
+
+        <article
+          class="listing-card"
+          data-id="fixture-property-105"
+          data-price="2850000"
+          data-area-m2="65"
+          data-rooms="2"
+          data-location="Bogota - Chapinero"
+          data-lat="4.649"
+          data-lng="-74.064"
+          data-url="https://fixture.immobil-ia.local/publicaciones/fixture-property-105"
+        >
+          <h3 data-field="title">Arriendo apartamento exterior cerca a zona financiera</h3>
+          <p data-field="raw-text">
+            Apartamento en arriendo muy similar, 65 m2, 2 alcobas, estudio y parqueadero en Chapinero.
+            Posible misma propietaria Sandra Rios, telefono +573013334455.
+          </p>
+          <p data-field="owner-name">Sandra Rios</p>
+          <p data-field="owner-phone">+573013334455</p>
+          <p data-field="owner-email">sandra.rios@example.com</p>
+          <img
+            alt="Apartamento arriendo similar"
+            src="https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=80"
+          />
+        </article>
+      </section>
+
+      <section aria-label="Leads">
+        <h2>Leads</h2>
+
+        <article
+          class="lead-card"
+          data-id="fixture-lead-201"
+          data-role="Comprador"
+          data-budget="450000000"
+          data-location="Bogota - Chapinero"
+          data-source-url="https://fixture.immobil-ia.local/leads/fixture-lead-201"
+        >
+          <h3 data-field="name">Andres Gomez</h3>
+          <p data-field="looking-for">
+            Busco apartamento de 2 habitaciones para compra en Chapinero, ideal 60 a 80 m2.
+          </p>
+          <p data-field="phone">+573222224444</p>
+          <p data-field="email">andres.gomez@example.com</p>
+          <p data-field="address">Chapinero Alto, Bogota</p>
+        </article>
+
+        <article
+          class="lead-card"
+          data-id="fixture-lead-202"
+          data-role="Arrendatario"
+          data-budget="2600000"
+          data-location="Bogota - Usaquen"
+          data-source-url="https://fixture.immobil-ia.local/leads/fixture-lead-202"
+        >
+          <h3 data-field="name">Nicolas Bernal</h3>
+          <p data-field="looking-for">
+            Necesito loft en arriendo en Usaquen, acepto cocina abierta y balcon, hasta 2.6 millones.
+          </p>
+          <p data-field="phone">+573145551919</p>
+          <p data-field="email">nicolas.bernal@example.com</p>
+          <p data-field="address">Usaquen, Bogota</p>
+        </article>
+
+        <article
+          class="lead-card"
+          data-id="fixture-lead-203"
+          data-role="Arrendatario"
+          data-budget="3000000"
+          data-location="Bogota - Chapinero"
+          data-source-url="https://fixture.immobil-ia.local/leads/fixture-lead-203"
+        >
+          <h3 data-field="name">Camila Torres</h3>
+          <p data-field="looking-for">
+            Busco apartamento en arriendo en Chapinero, 2 habitaciones, hasta 3 millones, ojalá con parqueadero.
+          </p>
+          <p data-field="phone">+573205551010</p>
+          <p data-field="email">camila.torres@example.com</p>
+          <p data-field="address">Chapinero, Bogota</p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-immobilia}
+      POSTGRES_USER: ${POSTGRES_USER:-immobilia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-immobilia_dev}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-immobilia} -d ${POSTGRES_DB:-immobilia}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  thin-server:
+    build:
+      context: ./thin-server
+    ports:
+      - "${THIN_SERVER_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-immobilia}:${POSTGRES_PASSWORD:-immobilia_dev}@postgres:5432/${POSTGRES_DB:-immobilia}
+      IMMOBILIA_NLP_PROVIDER: ${IMMOBILIA_NLP_PROVIDER:-none}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      IMMOBILIA_PROXY_SERVER: ${IMMOBILIA_PROXY_SERVER:-}
+      IMMOBILIA_PROXY_PROVIDER: ${IMMOBILIA_PROXY_PROVIDER:-static}
+      IMMOBILIA_PROXY_HOST: ${IMMOBILIA_PROXY_HOST:-}
+      IMMOBILIA_PROXY_PORT: ${IMMOBILIA_PROXY_PORT:-}
+      IMMOBILIA_PROXY_PROTOCOL: ${IMMOBILIA_PROXY_PROTOCOL:-http}
+      IMMOBILIA_PROXY_USERNAME: ${IMMOBILIA_PROXY_USERNAME:-}
+      IMMOBILIA_PROXY_PASSWORD: ${IMMOBILIA_PROXY_PASSWORD:-}
+      IMMOBILIA_PROXY_TTL_MINUTES: ${IMMOBILIA_PROXY_TTL_MINUTES:-20}
+      WEBSHARE_API_KEY: ${WEBSHARE_API_KEY:-}
+      WEBSHARE_PROXY_MODE: ${WEBSHARE_PROXY_MODE:-direct}
+      WEBSHARE_PROXY_PROTOCOL: ${WEBSHARE_PROXY_PROTOCOL:-http}
+      WEBSHARE_COUNTRY_CODES: ${WEBSHARE_COUNTRY_CODES:-}
+      WEBSHARE_PAGE_SIZE: ${WEBSHARE_PAGE_SIZE:-25}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      RESEND_TO_EMAIL: ${RESEND_TO_EMAIL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  admin-panel:
+    build:
+      context: ./admin-panel
+    ports:
+      - "8080:80"
+    environment:
+      NODE_ENV: production
+
+  scraper-agent:
+    build:
+      context: ./scraper-agent
+    ports:
+      - "8787:8787"
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-8787}
+      SCRAPER_MODE: ${SCRAPER_MODE:-mock}
+      SCRAPER_SOURCE_URL: ${SCRAPER_SOURCE_URL:-}
+      IMMOBILIA_ADMIN_API_URL: http://thin-server:3000
+      IMMOBILIA_USER_ID: ${IMMOBILIA_USER_ID:-local-dev-user}
+      IMMOBILIA_LICENSE_TOKEN: ${IMMOBILIA_LICENSE_TOKEN:-}
+
+volumes:
+  postgres-data:
