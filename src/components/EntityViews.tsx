@@ -2,6 +2,7 @@ import { ExternalLink, Layers3, Mail, MapPin, Phone, Ruler, ShieldCheck, UserRou
 import { useState, type ReactNode } from "react";
 import { Button } from "./ui/Button";
 import type { Lead, PropertyGroup } from "../lib/types";
+import { api } from "../lib/api";
 import { formatCurrency, formatPercent } from "../lib/utils";
 
 type EntityViewProps = {
@@ -91,20 +92,23 @@ export function PropertiesView({
               <details className="mt-4 rounded-md border border-border p-3 text-sm">
                 <summary className="cursor-pointer font-medium">Ver publicaciones relacionadas</summary>
                 <div className="mt-3 grid gap-2">
-                  {group.publications.map((publication) => (
+                  {group.publications.map((publication) => {
+                    const publicationUrl = publication.url || publication.sourceUrl;
+                    return (
                     <div className="flex items-center justify-between gap-3 text-muted-foreground" key={publication.id}>
                       <span>{publication.title}</span>
-                      {publication.url ? (
+                      {publicationUrl ? (
                         <button
                           className="flex items-center gap-1 font-medium text-primary"
-                          onClick={() => window.open(publication.url, "_blank")}
+                          onClick={() => openExternalUrl(publicationUrl)}
                         >
                           Abrir
                           <ExternalLink className="h-3.5 w-3.5" />
                         </button>
                       ) : null}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </details>
 
@@ -327,4 +331,15 @@ function Stat({ label, value, icon }: { label: string; value: string; icon: Reac
       <p className="mt-1 font-semibold">{value}</p>
     </div>
   );
+}
+
+function openExternalUrl(url: string) {
+  if (!("__TAURI_INTERNALS__" in window)) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  api.openExternalUrl(url).catch(() => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  });
 }

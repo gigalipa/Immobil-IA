@@ -1,8 +1,12 @@
 use chrono::Utc;
+use ort::{session::Session, value::Tensor};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{sqlite::SqliteConnectOptions, sqlite::SqlitePoolOptions, Row, SqlitePool};
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{Mutex as StdMutex, OnceLock},
+};
 use tauri::{Manager, State};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -307,6 +311,15 @@ async fn record_feedback(
     Ok(())
 }
 
+#[tauri::command]
+async fn open_external_url(url: String) -> Result<(), String> {
+    let trimmed = url.trim();
+    if !(trimmed.starts_with("https://") || trimmed.starts_with("http://")) {
+        return Err("Solo se pueden abrir enlaces http o https".to_string());
+    }
+    open::that(trimmed).map_err(|error| error.to_string())
+}
+
 fn feedback_kind(match_payload: &Value) -> &'static str {
     match string_field(match_payload, &["source"]).as_deref() {
         Some("MatchMaker") => "matchmaker_match",
@@ -360,12 +373,17 @@ async fn run_radar(state: State<'_, AppState>, radar_id: String) -> Result<Boots
         let db = state.db.lock().await;
         sync_user_id(&db).await?
     };
+    let known_urls = {
+        let db = state.db.lock().await;
+        load_known_document_urls(&db).await?
+    };
     let proxy = request_proxy_token(&user_id, &radar).await.ok().flatten();
     let mut request_payload = json!({
         "keywords": radar.keywords,
         "country": radar.country,
         "zone": radar.zone,
         "nlpProvider": configured_nlp_provider(),
+        "knownUrls": known_urls,
     });
     if let Some(proxy) = proxy {
         request_payload["proxy"] = proxy;
@@ -858,6 +876,24 @@ async fn load_leads(pool: &SqlitePool) -> Result<Vec<Value>, String> {
         .collect()
 }
 
+async fn load_known_document_urls(pool: &SqlitePool) -> Result<Vec<String>, String> {
+    let rows = sqlx::query(
+        r#"
+        SELECT url AS url FROM publications WHERE url IS NOT NULL AND trim(url) != ''
+        UNION
+        SELECT source_url AS url FROM leads WHERE source_url IS NOT NULL AND trim(source_url) != ''
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|error| error.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| row.try_get::<String, _>("url").ok())
+        .collect())
+}
+
 async fn load_matches(pool: &SqlitePool) -> Result<Vec<Value>, String> {
     let rows = sqlx::query(
         "SELECT payload, status FROM matches WHERE payload IS NOT NULL ORDER BY updated_at DESC",
@@ -1026,6 +1062,8 @@ async fn generate_post_comparer_matches(pool: &SqlitePool) -> Result<i64, String
                     "features": similarity.features.round(),
                     "confidence": similarity.confidence.round()
                 },
+                "modelRuntime": similarity.runtime,
+                "modelPath": similarity.model_path,
                 "status": "Pendiente"
             });
 
@@ -1079,6 +1117,8 @@ async fn generate_matchmaker_matches(pool: &SqlitePool) -> Result<i64, String> {
                     "features": score.features.round(),
                     "confidence": score.confidence.round()
                 },
+                "modelRuntime": score.runtime,
+                "modelPath": score.model_path,
                 "status": "Pendiente"
             });
 
@@ -1317,9 +1357,15 @@ struct SimilarityScore {
     visual: f64,
     features: f64,
     confidence: f64,
+    runtime: &'static str,
+    model_path: Option<String>,
 }
 
 fn compare_publications(first: &Value, second: &Value) -> SimilarityScore {
+    if let Some(score) = run_onnx_score(ModelKind::PostComparer, &post_comparer_features(first, second)) {
+        return score;
+    }
+
     let gps = gps_similarity(first, second);
     let visual = visual_similarity(first, second);
     let feature_score = average(&[
@@ -1336,10 +1382,16 @@ fn compare_publications(first: &Value, second: &Value) -> SimilarityScore {
         visual,
         features: feature_score,
         confidence,
+        runtime: "deterministic",
+        model_path: None,
     }
 }
 
 fn compare_lead_to_property(lead: &Value, property: &Value) -> SimilarityScore {
+    if let Some(score) = run_onnx_score(ModelKind::MatchMaker, &matchmaker_features(lead, property)) {
+        return score;
+    }
+
     let location = lead_location_score(lead, property);
     let budget = lead_budget_score(lead, property);
     let intent = transaction_intent_score(lead, property);
@@ -1355,6 +1407,235 @@ fn compare_lead_to_property(lead: &Value, property: &Value) -> SimilarityScore {
         visual: intent,
         features,
         confidence,
+        runtime: "deterministic",
+        model_path: None,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ModelKind {
+    PostComparer,
+    MatchMaker,
+}
+
+struct OnnxModel {
+    session: StdMutex<Session>,
+    path: PathBuf,
+}
+
+static POST_COMPARER_MODEL: OnceLock<Option<OnnxModel>> = OnceLock::new();
+static MATCHMAKER_MODEL: OnceLock<Option<OnnxModel>> = OnceLock::new();
+
+fn run_onnx_score(kind: ModelKind, features: &[f32]) -> Option<SimilarityScore> {
+    let model = onnx_model(kind).as_ref()?;
+    let input = Tensor::from_array(([1, features.len()], features.to_vec())).ok()?;
+    let mut session = model.session.lock().ok()?;
+    let outputs = session.run(ort::inputs!["input" => input]).ok()?;
+    let (_, scores) = outputs.get("scores")?.try_extract_tensor::<f32>().ok()?;
+    if scores.len() < 4 {
+        return None;
+    }
+
+    Some(SimilarityScore {
+        gps: f64::from(scores[0]).clamp(0.0, 100.0),
+        visual: f64::from(scores[1]).clamp(0.0, 100.0),
+        features: f64::from(scores[2]).clamp(0.0, 100.0),
+        confidence: f64::from(scores[3]).clamp(0.0, 100.0),
+        runtime: "onnx",
+        model_path: Some(model.path.display().to_string()),
+    })
+}
+
+fn onnx_model(kind: ModelKind) -> &'static Option<OnnxModel> {
+    match kind {
+        ModelKind::PostComparer => POST_COMPARER_MODEL.get_or_init(|| {
+            load_onnx_model("IMMOBILIA_POST_COMPARER_MODEL_PATH", "post_comparer.onnx")
+        }),
+        ModelKind::MatchMaker => MATCHMAKER_MODEL.get_or_init(|| {
+            load_onnx_model("IMMOBILIA_MATCHMAKER_MODEL_PATH", "matchmaker.onnx")
+        }),
+    }
+}
+
+fn load_onnx_model(env_var: &str, default_file_name: &str) -> Option<OnnxModel> {
+    let path = resolve_model_path(env_var, default_file_name)?;
+    let session = Session::builder().ok()?.commit_from_file(&path).ok()?;
+    Some(OnnxModel {
+        session: StdMutex::new(session),
+        path,
+    })
+}
+
+fn resolve_model_path(env_var: &str, default_file_name: &str) -> Option<PathBuf> {
+    if let Ok(raw_path) = std::env::var(env_var) {
+        let trimmed = raw_path.trim();
+        if !trimmed.is_empty() {
+            let configured = PathBuf::from(trimmed);
+            let absolute = if configured.is_absolute() {
+                configured
+            } else {
+                std::env::current_dir().ok()?.join(configured)
+            };
+            if absolute.exists() {
+                return Some(absolute);
+            }
+        }
+    }
+
+    let current_dir = std::env::current_dir().ok();
+    let executable_dir = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(PathBuf::from));
+    let candidates = [
+        current_dir
+            .as_ref()
+            .map(|path| path.join("models").join(default_file_name)),
+        current_dir
+            .as_ref()
+            .map(|path| path.join("..").join("models").join(default_file_name)),
+        executable_dir
+            .as_ref()
+            .map(|path| path.join("models").join(default_file_name)),
+        executable_dir
+            .as_ref()
+            .map(|path| path.join("..").join("..").join("models").join(default_file_name)),
+    ];
+
+    candidates
+        .into_iter()
+        .flatten()
+        .find(|path| path.exists())
+}
+
+fn post_comparer_features(first: &Value, second: &Value) -> Vec<f32> {
+    vec![
+        distance_km_normalized(first, second),
+        normalized_score(zone_similarity(first, second)),
+        normalized_score(numeric_similarity(first, second, &["price"], 0.18)),
+        normalized_score(numeric_similarity(first, second, &["areaM2", "area", "area_m2"], 0.16)),
+        normalized_score(room_similarity(first, second)),
+        normalized_score(text_similarity(first, second)),
+        normalized_score(text_jaccard_fields(first, second, &["location"])),
+        owner_phone_match(first, second),
+        normalized_score(owner_name_similarity(first, second)),
+        both_have_field(first, second, &["imageUrl", "image_url"]),
+        source_reliability(first),
+        source_reliability(second),
+    ]
+}
+
+fn matchmaker_features(lead: &Value, property: &Value) -> Vec<f32> {
+    let publication_count = i64_field(property, &["publicationCount", "publication_count"])
+        .or_else(|| {
+            property
+                .get("publicationIds")
+                .and_then(Value::as_array)
+                .map(|ids| ids.len() as i64)
+        })
+        .unwrap_or(1)
+        .max(1);
+    let property_certainty = f64_field(property, &["certainty"])
+        .map(normalized_score)
+        .unwrap_or(if publication_count > 1 { 1.0 } else { 0.5 });
+
+    vec![
+        normalized_score(lead_location_score(lead, property)),
+        normalized_score(lead_budget_score(lead, property)),
+        normalized_score(transaction_intent_score(lead, property)),
+        normalized_score(text_feature_score(lead, property)),
+        normalized_score(room_demand_score(lead, property)),
+        normalized_score(area_demand_score(lead, property)),
+        has_field(lead, &["phone"]),
+        has_field(lead, &["email"]),
+        has_field(property, &["ownerPhone", "owner_phone"]),
+        has_field(property, &["ownerEmail", "owner_email"]),
+        ((publication_count as f32) / 4.0).clamp(0.0, 1.0),
+        property_certainty,
+        normalize_market_money(i64_field(property, &["price"]).unwrap_or(0)),
+        normalize_market_money(i64_field(lead, &["budget"]).unwrap_or(0)),
+    ]
+}
+
+fn normalized_score(score: f64) -> f32 {
+    (score / 100.0).clamp(0.0, 1.0) as f32
+}
+
+fn distance_km_normalized(first: &Value, second: &Value) -> f32 {
+    let Some(first_lat) = f64_field(first, &["lat"]) else {
+        return 0.5;
+    };
+    let Some(first_lng) = f64_field(first, &["lng", "lon"]) else {
+        return 0.5;
+    };
+    let Some(second_lat) = f64_field(second, &["lat"]) else {
+        return 0.5;
+    };
+    let Some(second_lng) = f64_field(second, &["lng", "lon"]) else {
+        return 0.5;
+    };
+
+    (haversine_km(first_lat, first_lng, second_lat, second_lng) * 0.35).clamp(0.0, 1.0) as f32
+}
+
+fn text_jaccard_fields(first: &Value, second: &Value, keys: &[&str]) -> f64 {
+    let first_text = string_field(first, keys).unwrap_or_default();
+    let second_text = string_field(second, keys).unwrap_or_default();
+    jaccard_similarity(&first_text, &second_text)
+}
+
+fn owner_phone_match(first: &Value, second: &Value) -> f32 {
+    string_field(first, &["ownerPhone", "owner_phone"])
+        .zip(string_field(second, &["ownerPhone", "owner_phone"]))
+        .map(|(first_phone, second_phone)| {
+            if normalize_digits(&first_phone) == normalize_digits(&second_phone) {
+                1.0
+            } else {
+                0.0
+            }
+        })
+        .unwrap_or(0.0)
+}
+
+fn owner_name_similarity(first: &Value, second: &Value) -> f64 {
+    let first_name = string_field(first, &["ownerName", "owner_name"]).unwrap_or_default();
+    let second_name = string_field(second, &["ownerName", "owner_name"]).unwrap_or_default();
+    jaccard_similarity(&first_name, &second_name)
+}
+
+fn both_have_field(first: &Value, second: &Value, keys: &[&str]) -> f32 {
+    if has_field(first, keys) > 0.0 && has_field(second, keys) > 0.0 {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+fn has_field(value: &Value, keys: &[&str]) -> f32 {
+    string_field(value, keys)
+        .filter(|field| !field.trim().is_empty())
+        .map(|_| 1.0)
+        .unwrap_or(0.0)
+}
+
+fn source_reliability(value: &Value) -> f32 {
+    match string_field(value, &["source"]).as_deref() {
+        Some("Manual") => 1.0,
+        Some("Scraper") | Some("Portal") | Some("Fuente controlada") => 0.85,
+        Some("Red social") => 0.70,
+        Some(_) => 0.60,
+        None => 0.50,
+    }
+}
+
+fn normalize_market_money(value: i64) -> f32 {
+    if value <= 0 {
+        return 0.0;
+    }
+    let value = value as f32;
+    if value <= 20_000_000.0 {
+        (value / 20_000_000.0).clamp(0.0, 1.0)
+    } else {
+        (value / 1_500_000_000.0).clamp(0.0, 1.0)
     }
 }
 
@@ -2662,6 +2943,7 @@ fn main() {
             create_manual_entity,
             update_match_status,
             record_feedback,
+            open_external_url,
             save_template,
             run_radar
         ])

@@ -41,6 +41,7 @@ export type Property = {
   ownerPhone?: string;
   ownerEmail?: string;
   url?: string;
+  sourceUrl?: string;
   propertyGroupId?: string;
   publicationIds?: string[];
   publicationCount?: number;

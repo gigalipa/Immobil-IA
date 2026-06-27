@@ -144,6 +144,29 @@ Por defecto usa `SCRAPER_MODE=mock`, que devuelve documentos simulados sin tocar
 
 Cuando el radar se ejecuta con `IMMOBILIA_NLP_PROVIDER` distinto de `none`, el Agente WS envia el texto crudo de cada documento a `IMMOBILIA_ADMIN_API_URL/nlp/extract` y fusiona la respuesta con la extraccion local. Si el thin server o el proveedor externo fallan, conserva los datos extraidos localmente.
 
+Para una prueba mas realista con Tavily Search:
+
+```env
+SCRAPER_MODE=live
+SCRAPER_DISCOVERY_PROVIDER=tavily
+TAVILY_API_KEY=tu_api_key
+TAVILY_MAX_RESULTS=10
+TAVILY_SEARCH_DEPTH=basic
+TAVILY_ENABLE_SOCIAL_LEAD_SEARCH=true
+TAVILY_SOCIAL_MAX_RESULTS=12
+TAVILY_LEAD_SOURCE_DOMAINS=facebook.com,reddit.com,x.com,twitter.com,threads.net,instagram.com,tiktok.com,linkedin.com
+TAVILY_ENABLE_PAGE_EXPANSION=true
+TAVILY_EXPAND_SEED_LIMIT=8
+TAVILY_EXTRACT_LIMIT=30
+TAVILY_EXTRACT_DEPTH=basic
+TAVILY_CRAWL_URLS=
+```
+
+En este modo el Agente WS consulta Tavily, deduplica resultados por URL, expande paginas semilla con Puppeteer para buscar enlaces internos de publicaciones, usa Tavily Extract sobre URLs candidatas, clasifica cada resultado como lead o publicacion con reglas locales y luego usa el NLP configurado para enriquecer campos inmobiliarios. Ademas ejecuta un carril separado de busqueda social (`TAVILY_ENABLE_SOCIAL_LEAD_SEARCH`) orientado a foros y redes donde personas publican demanda: "busco", "necesito", "presupuesto", "quien arrienda", etc. Esos resultados se marcan como candidatos a lead antes de pasar por NLP.
+Las variables `TAVILY_INCLUDE_DOMAINS` y `TAVILY_EXCLUDE_DOMAINS` aceptan dominios separados por coma para acotar inventario general; `TAVILY_LEAD_SOURCE_DOMAINS` acota el carril social de leads. Antes de llamar al agente, Tauri envia las URLs locales ya guardadas para evitar resultados repetidos.
+El Agente WS esta pensado para corridas diarias o semanales, asi que prioriza cobertura y utilidad sobre respuesta inmediata. En fuentes reales puede tardar varios minutos si expande portales, ejecuta Tavily Extract y pasa documentos por NLP.
+Si `TAVILY_CRAWL_URLS` contiene URLs separadas por coma, el agente tambien ejecuta Tavily Crawl sobre esas fuentes y mezcla los resultados con Search. Usa `TAVILY_CRAWL_LIMIT`, `TAVILY_CRAWL_MAX_DEPTH` y `TAVILY_CRAWL_INSTRUCTIONS` para controlar esa exploracion.
+
 ## Arquitectura
 
 Consulta [docs/architecture.md](docs/architecture.md) para el modelo detallado:
@@ -152,6 +175,8 @@ Consulta [docs/architecture.md](docs/architecture.md) para el modelo detallado:
 - Panel admin web: usuarios, planes, proxies, NLP y credenciales.
 - Thin server: autenticacion, planes y broker de proxies.
 - APIs externas: NLP y asistente de plantillas bajo demanda.
+
+Los modelos locales viven por defecto en `models/post_comparer.onnx` y `models/matchmaker.onnx`. Tauri los carga con ONNX Runtime y registra `modelRuntime`/`modelPath` en cada sugerencia generada. Si un modelo no esta disponible o falla la carga, la app conserva el scorer deterministico de Rust como fallback para no bloquear la operacion local. Las rutas pueden sobreescribirse con `IMMOBILIA_POST_COMPARER_MODEL_PATH` e `IMMOBILIA_MATCHMAKER_MODEL_PATH`.
 
 ## Estructura
 
@@ -165,4 +190,4 @@ docker-compose.yml   Orquestacion local del panel admin y del Agente WS durante 
 
 ## Siguiente paso tecnico
 
-La integracion ONNX real queda preparada conceptualmente con el calculo ponderado en Rust. Para completar la Semana 4 del roadmap, se debe exportar el modelo `.onnx`, agregar el crate `ort` y reemplazar los scores mock por inferencia local.
+La integracion ONNX local ya apunta a los contratos de `models/model_contract.md`. El siguiente avance del roadmap es recolectar feedback HITL suficiente, entrenar reemplazos reales manteniendo el mismo input/output y comparar su precision contra las lineas base deterministicas actuales.

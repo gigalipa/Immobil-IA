@@ -82,6 +82,9 @@ export const api = {
   async recordFeedback(kind: string, entityId: string, decision: string, payload: Record<string, unknown>) {
     await call<null>("record_feedback", { kind, entityId, decision, payload }, null);
   },
+  async openExternalUrl(url: string) {
+    await call<null>("open_external_url", { url }, null);
+  },
   saveTemplate(template: MessageTemplate) {
     return call<MessageTemplate>("save_template", { template }, template);
   },
